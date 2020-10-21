@@ -484,6 +484,22 @@ PyObject *THPModule_benchmarkCuDNN(PyObject *_unused, PyObject *noargs)
   else Py_RETURN_FALSE;
 }
 
+//<AliJahan/>
+PyObject *THPModule_setConvFwdAlgo(PyObject */* unused */, PyObject *arg)
+{
+  THPUtils_assert(THPUtils_checkLong(arg), "set_convFwdAlgo expects an int, "
+          "but got %s", THPUtils_typename(arg));
+  auto algo = static_cast<int>(THPUtils_unpackLong(arg));
+  at::globalContext().setConvFwdAlgo(static_cast<int>(algo));
+  Py_RETURN_NONE;
+}
+
+PyObject *THPModule_convFwdAlgo(PyObject *_unused, PyObject *noargs)
+{
+  return THPUtils_packInt64(static_cast<int>(at::globalContext().convFwdAlgo()));
+}
+//</AliJahan?
+
 PyObject *THPModule_setAllowTF32CuBLAS(PyObject *_unused, PyObject *arg)
 {
   THPUtils_assert(PyBool_Check(arg), "set_allow_tf32_cublas expects a bool, "
@@ -601,6 +617,8 @@ static PyMethodDef TorchMethods[] = {
   {"_set_cudnn_allow_tf32", (PyCFunction)THPModule_setAllowTF32CuDNN, METH_O,  nullptr},
   {"_get_cudnn_benchmark", THPModule_benchmarkCuDNN, METH_NOARGS,     nullptr},
   {"_set_cudnn_benchmark", (PyCFunction)THPModule_setBenchmarkCuDNN, METH_O,  nullptr},
+  {"_get_cudnn_conv_fwd_algo", THPModule_convFwdAlgo, METH_NOARGS, nullptr}, //<AliJahan>
+  {"_set_cudnn_conv_fwd_algo", (PyCFunction)THPModule_setConvFwdAlgo, METH_O, nullptr}, //<AliJahan>
   {"_get_cudnn_deterministic", THPModule_deterministicCuDNN, METH_NOARGS,     nullptr},
   {"_set_cudnn_deterministic", (PyCFunction)THPModule_setDeterministicCuDNN, METH_O,  nullptr},
   {"_get_deterministic", THPModule_deterministic, METH_NOARGS,     nullptr},

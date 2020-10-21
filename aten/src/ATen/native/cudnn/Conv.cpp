@@ -18,7 +18,7 @@ namespace at { namespace native {
 at::Tensor cudnn_convolution(
     const at::Tensor& input, const at::Tensor& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation,
-    int64_t groups, bool benchmark, bool deterministic, bool allow_tf32) {
+    int64_t groups, bool benchmark, bool deterministic, bool allow_tf32, int64_t conv_fwd_algo) { //<AliJahan>
   AT_ERROR("cudnn_convolution: ATen not compiled with cuDNN support");
 }
 
@@ -466,7 +466,7 @@ size_t getMaxWorkspaceSize(
 }
 
 template<typename perf_t>
-std::vector<perf_t> getValidAlgorithms(perf_t *perfResults, const ConvolutionArgs& args, int n_algo) {
+std::vector<perf_t> getValidAlgorithms(perf_t *perfResults, const ConvolutionArgs& args, int n_algo, int64_t conv_fwd_algo) { //<AliJahan>
 
 // See Note [blocklist fft algorithms for strided dgrad]
 #if CUDNN_VERSION < 7500
@@ -477,6 +477,13 @@ std::vector<perf_t> getValidAlgorithms(perf_t *perfResults, const ConvolutionArg
                             [=](int n){return n != 1;});
 #endif
 
+  //<AliJahan/>
+  std::cout << "FwdAlgorithms profile results: \n";
+  std::cout << "Algo,\ttime,\tmemory\n";
+  for(int i=0;i<n_algo;i++)
+	  std::cout << perfResults[i].algo << ",\t" << perfResults[i].time << ",\t" <<  perfResults[i].memory << "\n";
+  std::cout << "----------------- \n";
+  //</AliJahan>
   std::vector<perf_t> result;
   result.reserve(n_algo);
   for (int i = 0; i < n_algo; i++) {
@@ -502,6 +509,36 @@ std::vector<perf_t> getValidAlgorithms(perf_t *perfResults, const ConvolutionArg
     }
   }
   TORCH_CHECK(result.size() > 0, "no valid convolution algorithms available in CuDNN");
+  //<AliJahan/>
+  std::cout << "Supported FwdAlgorithms: \n";
+  for(int i=0;i<result.size();i++)
+	  std::cout << result[i].algo <<",";
+  std::cout << "\n-----------------\n";
+
+  // conv_fwd_algo = -1 means proceeding with normal behavior of cuDNN
+  if (conv_fwd_algo>=0){ 
+    //TODO: we can do all these checkings for selecting conv_fwd_algo in the previous loop
+    std::vector<perf_t> selected;
+    // selected.reserve(1);
+    bool found = false;
+    for (int i = 0; i < result.size(); i++) {
+      // std::cout << "alg:" << result[i].algo  << "req. algo: " << conv_fwd_algo <<  "comp: " << (result[i].algo == (int) conv_fwd_algo) << std::endl;
+      if (result[i].algo == (int)conv_fwd_algo) {
+        selected.push_back(result[i]);
+        found = true;
+        break;
+      }
+    }
+    
+    if (found){
+      std::cout << "Requested fwd algorithm (" << conv_fwd_algo << ") is set." << std::endl;
+      return selected;
+    }
+    else{// If invalid conv_fwd_algo is requested, go ahead with the FwdAlgorithms list
+      std::cout << "Requested fwd algorithm (" << conv_fwd_algo << ") was not found, it may not be in supported list! \n Returning the supported \"FwdAlgorithms\" list printed above." << std::endl;
+    }
+  }
+  //</AliJahan>
   return result;
 }
 
@@ -513,7 +550,7 @@ struct algorithm_search<cudnnConvolutionFwdAlgoPerf_t> {
   static constexpr auto DEFAULT_ALGO = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   static BenchmarkCache<perf_t>& cache() { return fwd_algos; }
 
-  static std::vector<perf_t> findAlgorithms(const ConvolutionArgs& args, bool benchmark) {
+  static std::vector<perf_t> findAlgorithms(const ConvolutionArgs& args, bool benchmark, int64_t conv_fwd_algo = -1) { //<AliJahan>
     static const algo_t algos[] = {
          CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
          CUDNN_CONVOLUTION_FWD_ALGO_FFT,
@@ -559,7 +596,8 @@ struct algorithm_search<cudnnConvolutionFwdAlgoPerf_t> {
       // e.g. a few GBs.
       c10::cuda::CUDACachingAllocator::emptyCache();
     }
-    return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count);
+    // std::cout << "conv_fwd_algo: " << conv_fwd_algo << std::endl; //<AliJahan>
+    return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count, conv_fwd_algo); //<AliJahan>
   }
 
   static void getWorkspaceSize(
@@ -585,7 +623,7 @@ struct algorithm_search<cudnnConvolutionBwdDataAlgoPerf_t> {
   static constexpr auto DEFAULT_ALGO = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
   static BenchmarkCache<perf_t>& cache() { return bwd_data_algos; }
 
-  static std::vector<perf_t> findAlgorithms(const ConvolutionArgs& args, bool benchmark) {
+  static std::vector<perf_t> findAlgorithms(const ConvolutionArgs& args, bool benchmark, int64_t conv_fwd_algo = -1) { //<AliJahan>
     static const algo_t algos[] = {
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
@@ -629,7 +667,7 @@ struct algorithm_search<cudnnConvolutionBwdDataAlgoPerf_t> {
       // e.g. a few GBs.
       c10::cuda::CUDACachingAllocator::emptyCache();
     }
-    return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count);
+    return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count, conv_fwd_algo); //<AliJahan>
   }
 
   static void getWorkspaceSize(
@@ -656,7 +694,7 @@ struct algorithm_search<cudnnConvolutionBwdFilterAlgoPerf_t> {
 
   static BenchmarkCache<perf_t>& cache() { return bwd_filter_algos; }
 
-  static std::vector<perf_t> findAlgorithms(const ConvolutionArgs& args, bool benchmark) {
+  static std::vector<perf_t> findAlgorithms(const ConvolutionArgs& args, bool benchmark, int64_t conv_fwd_algo=-1) { //<AliJahan>
     static const algo_t algos[] = {
         CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
         CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
@@ -701,7 +739,7 @@ struct algorithm_search<cudnnConvolutionBwdFilterAlgoPerf_t> {
       // e.g. a few GBs.
       c10::cuda::CUDACachingAllocator::emptyCache();
     }
-    return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count);
+    return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count, conv_fwd_algo);//<AliJahan>
   }
 
   static void getWorkspaceSize(const ConvolutionArgs& args, algo_t algo, size_t* workspaceSize)
@@ -722,9 +760,9 @@ class AlgoIterator {
   using search = algorithm_search<perf_t>;
   const ConvolutionArgs &args;
   bool benchmark;
-
+  int64_t conv_fwd_algo; //<AliJahan>
 public:
-  AlgoIterator(const ConvolutionArgs &args, bool benchmark): args(args), benchmark(benchmark) {}
+  AlgoIterator(const ConvolutionArgs &args, bool benchmark, int64_t conv_fwd_algo ): args(args), benchmark(benchmark), conv_fwd_algo(conv_fwd_algo) {} //<AliJahan>
 
   static std::vector<perf_t> onlyDefaultAlgorithm(const ConvolutionArgs &args) {
     std::vector<perf_t> perfResults(1);
@@ -750,6 +788,7 @@ public:
     perf_t algoPerf;
     if (!only_use_default && cache.find(args.params, &algoPerf)) {
       try {
+        std::cout << "Using 1\n";
         f(algoPerf);
         return;
       } catch (c10::CUDAOutOfMemoryError &e) {
@@ -757,10 +796,12 @@ public:
       }
     }
 
-    auto perfResults = only_use_default ? onlyDefaultAlgorithm(args) : search::findAlgorithms(args, benchmark);
+    auto perfResults = only_use_default ? onlyDefaultAlgorithm(args) : search::findAlgorithms(args, benchmark, conv_fwd_algo); //<AliJahan>
     for (auto &algoPerf : perfResults) {
       try {
+        std::cout << "Using 2\n";
         f(algoPerf);
+        std::cout << "Set algo in 2:" << algoPerf.algo << std::endl;
         cache.insert(args.params, algoPerf);
         return;
       } catch (c10::CUDAOutOfMemoryError &e) {
@@ -825,14 +866,14 @@ static inline void split_batch_dim_to_32bit_out(
     const at::Tensor& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation, int64_t groups,
     bool benchmark, bool deterministic, bool allow_tf32, 
-    int64_t max_worksize, func_t func_32bit) {
+    int64_t max_worksize, int64_t conv_fwd_algo, func_t func_32bit) { //<AliJahan>
   constexpr int64_t int_max = std::numeric_limits<int>::max();
   const int64_t ni = input.numel();
   const int64_t no = output.numel();
   // Assume the shape of the tensor is (N, C, D1, D2, ...)
   // if N * C * D1 * D2 * ... <= int_max, then no need to split at all
   if (ni <= int_max && no <= int_max) {
-    func_32bit(output, input, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32);
+    func_32bit(output, input, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, conv_fwd_algo);//<AliJahan>
     return;
   }
   // else, if C * D1 * D2 * ... <= int_max, then we just need to split across the N dimension
@@ -850,7 +891,7 @@ static inline void split_batch_dim_to_32bit_out(
       int64_t split_size_ = std::min<int64_t>(split_size, n - start);
       Tensor input_ = input.narrow(0, start, split_size_);
       Tensor output_ = output.narrow(0, start, split_size_);
-      func_32bit(output_, input_, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32);
+      func_32bit(output_, input_, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, conv_fwd_algo);//<AliJahan>
     }
     return;
   }
@@ -898,7 +939,7 @@ if (args.params.dataType == CUDNN_DATA_FLOAT) {                                 
 void raw_cudnn_convolution_forward_out_32bit(
     const Tensor& output, const Tensor& input, const Tensor& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation, int64_t groups,
-    bool benchmark, bool deterministic, bool allow_tf32) {
+    bool benchmark, bool deterministic, bool allow_tf32, int64_t conv_fwd_algo) { //<AliJahan>
 
   auto dataType = getCudnnDataType(input);
 
@@ -915,7 +956,7 @@ void raw_cudnn_convolution_forward_out_32bit(
   // wasteful; we'd rather reuse the workspace.  OTOH, legacy group
   // convolution support is already pretty slow, so this might not
   // matter.  (This applies to raw_cudnn_convolution_backward_input as well.)
-  AlgoIterator<cudnnConvolutionFwdAlgoPerf_t>(args, benchmark).try_all(
+  AlgoIterator<cudnnConvolutionFwdAlgoPerf_t>(args, benchmark, conv_fwd_algo).try_all( //<AliJahan>
     [&](const cudnnConvolutionFwdAlgoPerf_t &fwdAlgPerf){
       Tensor workspace = allocate_workspace(fwdAlgPerf.memory, input);
 
@@ -942,15 +983,15 @@ void raw_cudnn_convolution_forward_out_32bit(
 void raw_cudnn_convolution_forward_out(
     const Tensor& output, const Tensor& input, const Tensor& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation, int64_t groups,
-    bool benchmark, bool deterministic, bool allow_tf32) {
-  split_batch_dim_to_32bit_out(output, input, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, 1024 * 1024 * 256, raw_cudnn_convolution_forward_out_32bit);
+    bool benchmark, bool deterministic, bool allow_tf32, int64_t conv_fwd_algo) { //<AliJahan>
+  split_batch_dim_to_32bit_out(output, input, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, 1024 * 1024 * 256, conv_fwd_algo, raw_cudnn_convolution_forward_out_32bit);
 }
 
 Tensor cudnn_convolution_forward(
     CheckedFrom c,
     const TensorArg& input, const TensorArg& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation, int64_t groups,
-    bool benchmark, bool deterministic, bool allow_tf32)
+    bool benchmark, bool deterministic, bool allow_tf32, int64_t conv_fwd_algo) //<AliJahan>
 {
   checkAllSameType(c, {input, weight});
   checkAllSameGPU(c, {input, weight});
@@ -980,7 +1021,7 @@ Tensor cudnn_convolution_forward(
 
   raw_cudnn_convolution_forward_out(
       *output, input_contig, weight_contig,
-      padding, stride, dilation, groups, benchmark, deterministic, allow_tf32);
+      padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, conv_fwd_algo); //<AliJahan>
 
   return *output;
 }
@@ -988,13 +1029,13 @@ Tensor cudnn_convolution_forward(
 Tensor cudnn_convolution(
     const Tensor& input_t, const Tensor& weight_t,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation,
-    int64_t groups, bool benchmark, bool deterministic, bool allow_tf32)
+    int64_t groups, bool benchmark, bool deterministic, bool allow_tf32, int64_t conv_fwd_algo) //<AliJahan>
 {
   TensorArg input  { input_t,  "input",  1 },
             weight { weight_t, "weight", 2 };
   CheckedFrom c = "cudnn_convolution";
   auto output_t = cudnn_convolution_forward(
-    c, input, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32);
+    c, input, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, conv_fwd_algo);//<AliJahan>
   return output_t;
 }
 
@@ -1009,7 +1050,7 @@ Tensor cudnn_convolution_transpose_backward_input(
             weight      { weight_t, "weight", 2 };
   return cudnn_convolution_forward(
     "cudnn_convolution_transpose_backward_input",
-    grad_output, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32);
+    grad_output, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, -1 /*conv_fwd_algo*/);
 }
 
 std::tuple<at::Tensor,at::Tensor> cudnn_convolution_transpose_backward(
@@ -1041,7 +1082,7 @@ void raw_cudnn_convolution_backward_input_out_32bit(
     const at::Tensor& grad_output,
     const at::Tensor& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation, int64_t groups,
-    bool benchmark, bool deterministic, bool allow_tf32) {
+    bool benchmark, bool deterministic, bool allow_tf32, int conv_fwd_alg) {//<AliJahan>
   auto dataType = getCudnnDataType(grad_output);
 
   ConvolutionArgs args{ grad_input, grad_output, weight };
@@ -1052,7 +1093,7 @@ void raw_cudnn_convolution_backward_input_out_32bit(
   args.odesc.set(grad_output);
   args.cdesc.set(dataType, grad_output.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups, args.params.allow_tf32);
 
-  AlgoIterator<cudnnConvolutionBwdDataAlgoPerf_t>(args, benchmark).try_all(
+  AlgoIterator<cudnnConvolutionBwdDataAlgoPerf_t>(args, benchmark, -1).try_all( //<AliJahan> 
     [&](const cudnnConvolutionBwdDataAlgoPerf_t &bwdDataAlgPerf){
       Tensor workspace = allocate_workspace(bwdDataAlgPerf.memory, grad_output);
 
@@ -1086,7 +1127,7 @@ void raw_cudnn_convolution_backward_input_out(
     const at::Tensor& weight,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation, int64_t groups,
     bool benchmark, bool deterministic, bool allow_tf32) {
-  split_batch_dim_to_32bit_out(grad_input, grad_output, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, 1024 * 1024 * 128, raw_cudnn_convolution_backward_input_out_32bit);
+  split_batch_dim_to_32bit_out(grad_input, grad_output, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32, 1024 * 1024 * 128, -1 /*conv_fwd_algo*/,  raw_cudnn_convolution_backward_input_out_32bit); //<AliJahan>
 }
 
 // NOTE [ Backward vs transpose convolutions ]
@@ -1219,7 +1260,7 @@ void raw_cudnn_convolution_backward_weight_out_32bit(
   args.odesc.set(grad_output);
   args.cdesc.set(dataType, input.dim() - 2, args.params.padding, args.params.stride, args.params.dilation, args.params.groups, args.params.allow_tf32);
 
-  AlgoIterator<cudnnConvolutionBwdFilterAlgoPerf_t>(args, benchmark).try_all(
+  AlgoIterator<cudnnConvolutionBwdFilterAlgoPerf_t>(args, benchmark, -1 ).try_all( //<AliJahan> 
     [&](const cudnnConvolutionBwdFilterAlgoPerf_t &bwdFilterAlgPerf){
       Tensor workspace = allocate_workspace(bwdFilterAlgPerf.memory, input);
 
@@ -1367,7 +1408,7 @@ namespace at { namespace native {
 Tensor cudnn_convolution_deprecated(
     const at::Tensor& input, const at::Tensor& weight, const at::Tensor& bias /* optional */,
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation,
-    int64_t groups, bool benchmark, bool deterministic) {
+    int64_t groups, bool benchmark, bool deterministic) { 
   auto output = at::cudnn_convolution(input, weight, padding, stride, dilation, groups, benchmark, deterministic);
   if (bias.defined()) {
     output = output + reshape_bias(input.dim(), bias);
@@ -1381,7 +1422,7 @@ Tensor cudnn_convolution_deprecated2(
     IntArrayRef padding, IntArrayRef stride, IntArrayRef dilation,
     int64_t groups, bool benchmark, bool deterministic)
 {
-  return at::cudnn_convolution(input_t, weight_t, padding, stride, dilation, groups, benchmark, deterministic, at::globalContext().allowTF32CuDNN());
+  return at::cudnn_convolution(input_t, weight_t, padding, stride, dilation, groups, benchmark, deterministic, at::globalContext().allowTF32CuDNN(), at::globalContext().convFwdAlgo());//<AliJahan> 
 }
 
 // TODO (@zasdfgbnm): this is here only for compatibility, remove this in the future

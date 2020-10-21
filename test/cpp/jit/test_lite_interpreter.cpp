@@ -92,8 +92,8 @@ TEST(LiteInterpreterTest, Conv) {
   m.register_parameter("bias", torch::ones({20}), false);
   m.define(R"(
     def forward(self, input):
-      return torch._convolution(input, self.weight, self.bias, [1, 1], [0, 0], [1, 1], False, [0, 0], 1, False, False, True, True)
-  )");
+      return torch._convolution(input, self.weight, self.bias, [1, 1], [0, 0], [1, 1], False, [0, 0], 1, False, False, True, True, -1) 
+  )");//<AliJahan>
 
   inputs.push_back(torch::ones({1, 1, 28, 28}));
 

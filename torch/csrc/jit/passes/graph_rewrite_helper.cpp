@@ -66,10 +66,10 @@ void replaceConvolutionWithAtenConv(std::shared_ptr<Graph>& graph) {
   std::string convolution = R"(
       graph(%a, %w, %b, %stride:int[], %padding:int[], %dilation:int[],
           %transposed:bool, %output_padding:int[], %groups:int, %benchmark:bool,
-          %deterministic:bool, %cudnn_enabled:bool, %allow_tf32:bool):
+          %deterministic:bool, %cudnn_enabled:bool, %allow_tf32:bool, %conv_fwd_algo:int):
         %r = aten::_convolution(%a, %w, %b, %stride, %padding, %dilation,
-            %transposed, %output_padding, %groups, %benchmark, %deterministic, %cudnn_enabled, %allow_tf32)
-        return (%r) )";
+            %transposed, %output_padding, %groups, %benchmark, %deterministic, %cudnn_enabled, %allow_tf32, %conv_fwd_algo)
+        return (%r) )";//<AliJahan>
 
   std::string conv2d_for_deprecated_conv = R"(
       graph(%a, %w, %b, %stride:int[], %padding:int[], %dilation:int[],

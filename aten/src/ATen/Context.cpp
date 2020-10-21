@@ -125,6 +125,17 @@ bool Context::benchmarkCuDNN() const {
   return benchmark_cudnn;
 }
 
+//<AliJahan/>
+int64_t  Context::convFwdAlgo() const {
+  return conv_fwd_algo;
+}
+
+void Context::setConvFwdAlgo(int64_t alg){
+  std::cout<< " Conv FWD algo set to: " << alg << "\n ";
+  conv_fwd_algo = alg;
+}
+//</AliJahan>
+
 void Context::setBenchmarkCuDNN(bool b) {
   benchmark_cudnn = b;
 }

@@ -263,7 +263,7 @@ bool test_depthwiseConv() {
     auto W = torch::rand(w, at::TensorOptions(at::kCPU).dtype(at::kFloat));   \
     auto B = torch::rand(b, at::TensorOptions(at::kCPU).dtype(at::kFloat));   \
     auto Y1 = at::native::_convolution(                                       \
-        X, W, B, S, p, D, false, OP, g, false, false, true, true);            \
+        X, W, B, S, p, D, false, OP, g, false, false, true, true, -1);        \ /*<AliJahan>*/
     auto X2 = X.metal();                                                      \
     at::native::metal::Conv2DParams params{X.sizes(), W.sizes(), p, S, D, g}; \
     auto Y2 = at::native::metal::mpscnn::conv2d(X2, W, B, params).cpu();      \

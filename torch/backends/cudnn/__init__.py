@@ -84,11 +84,12 @@ def is_acceptable(tensor):
     return True
 
 
-def set_flags(_enabled=None, _benchmark=None, _deterministic=None, _allow_tf32=None):
+def set_flags(_enabled=None, _benchmark=None, _deterministic=None, _allow_tf32=None, _conv_fwd_algo=None): #<AliJahan>
     orig_flags = (torch._C._get_cudnn_enabled(),
                   torch._C._get_cudnn_benchmark(),
                   torch._C._get_cudnn_deterministic(),
-                  torch._C._get_cudnn_allow_tf32())
+                  torch._C._get_cudnn_allow_tf32(),
+                  torch._C._get_cudnn_conv_fwd_algo()) #<AliJahan>
     if _enabled is not None:
         torch._C._set_cudnn_enabled(_enabled)
     if _benchmark is not None:
@@ -97,13 +98,17 @@ def set_flags(_enabled=None, _benchmark=None, _deterministic=None, _allow_tf32=N
         torch._C._set_cudnn_deterministic(_deterministic)
     if _allow_tf32 is not None:
         torch._C._set_cudnn_allow_tf32(_allow_tf32)
+    #<AliJahan/>
+    if _conv_fwd_algo is not None:
+        torch._C._set_cudnn_conv_fwd_algo(_conv_fwd_algo)
+    #</AliJahan>
     return orig_flags
 
 
 @contextmanager
-def flags(enabled=False, benchmark=False, deterministic=False, allow_tf32=True):
+def flags(enabled=False, benchmark=False, deterministic=False, allow_tf32=True, conv_fwd_algo=-1): #<AliJahan>
     with __allow_nonbracketed_mutation():
-        orig_flags = set_flags(enabled, benchmark, deterministic, allow_tf32)
+        orig_flags = set_flags(enabled, benchmark, deterministic, allow_tf32, conv_fwd_algo)
     try:
         yield
     finally:
@@ -124,6 +129,7 @@ class CudnnModule(PropModule):
     deterministic = ContextProp(torch._C._get_cudnn_deterministic, torch._C._set_cudnn_deterministic)
     benchmark = ContextProp(torch._C._get_cudnn_benchmark, torch._C._set_cudnn_benchmark)
     allow_tf32 = ContextProp(torch._C._get_cudnn_allow_tf32, torch._C._set_cudnn_allow_tf32)
+    conv_fwd_algo = ContextProp(torch._C._get_cudnn_conv_fwd_algo, torch._C._set_cudnn_conv_fwd_algo)
 
 # This is the sys.modules replacement trick, see
 # https://stackoverflow.com/questions/2447353/getattr-on-a-module/7668273#7668273
@@ -133,3 +139,4 @@ sys.modules[__name__] = CudnnModule(sys.modules[__name__], __name__)
 enabled: bool
 deterministic: bool
 benchmark: bool
+conv_fwd_algo: int 

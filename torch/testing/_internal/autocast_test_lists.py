@@ -81,7 +81,7 @@ class AutocastTestLists(object):
                                                               (0, 0), 1, False, True, True)),
             # the current  _convolution
             ("_convolution", conv_args_fp32[1] + bias_fp32 + ((1, 1), (0, 0), (1, 1), False,
-                                                              (0, 0), 1, False, True, True, True)),
+                                                              (0, 0), 1, False, True, True, True, -1)), #<AliJahan>
             ("_convolution_nogroup", conv_args_fp32[1] + bias_fp32 + ((1, 1), (0, 0), (1, 1), False, (0, 0))),
             ("conv1d", conv_args_fp32[0]),
             ("conv2d", conv_args_fp32[1]),
@@ -99,7 +99,7 @@ class AutocastTestLists(object):
             ("cudnn_convolution", conv_args_fp32[1] + ((0, 0), (1, 1), (1, 1), 1, False, True), TEST_WITH_ROCM),
             ("cudnn_convolution_transpose", conv_args_fp32[1] + ((0, 0), (0, 0), (1, 1), (1, 1), 1, False, True), TEST_WITH_ROCM),
             # the current cudnn_convolutions
-            ("cudnn_convolution", conv_args_fp32[1] + ((0, 0), (1, 1), (1, 1), 1, False, True, True), TEST_WITH_ROCM),
+            ("cudnn_convolution", conv_args_fp32[1] + ((0, 0), (1, 1), (1, 1), 1, False, True, True, -1), TEST_WITH_ROCM),
             ("cudnn_convolution_transpose", conv_args_fp32[1] + ((0, 0), (0, 0), (1, 1),
                                                                  (1, 1), 1, False, True, True), TEST_WITH_ROCM),
             ("prelu", pointwise0_fp32 + element0_fp32),

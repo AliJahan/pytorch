@@ -109,7 +109,9 @@ class CAFFE2_API Context {
   bool userEnabledMkldnn() const;
   void setUserEnabledMkldnn(bool e);
   bool benchmarkCuDNN() const;
+  int64_t convFwdAlgo() const; //<AliJahan>
   void setBenchmarkCuDNN(bool);
+  void setConvFwdAlgo(int64_t); //<AliJahan>
   bool deterministicCuDNN() const;
   void setDeterministicCuDNN(bool);
 
@@ -212,6 +214,7 @@ class CAFFE2_API Context {
   bool deterministic_cudnn = false;
   bool _deterministic = false;
   bool benchmark_cudnn = false;
+  int64_t conv_fwd_algo = -1; //<AliJahan>
   bool allow_tf32_cudnn = true;
   bool allow_tf32_cublas = true;
   bool enabled_mkldnn = true;
