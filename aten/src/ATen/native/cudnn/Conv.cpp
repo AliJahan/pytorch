@@ -788,7 +788,7 @@ public:
     perf_t algoPerf;
     if (!only_use_default && cache.find(args.params, &algoPerf)) {
       try {
-        std::cout << "Using 1\n";
+        // std::cout << "Using 1: " << algoPerf.algo << "\n";//<AliJahan>
         f(algoPerf);
         return;
       } catch (c10::CUDAOutOfMemoryError &e) {
@@ -799,9 +799,8 @@ public:
     auto perfResults = only_use_default ? onlyDefaultAlgorithm(args) : search::findAlgorithms(args, benchmark, conv_fwd_algo); //<AliJahan>
     for (auto &algoPerf : perfResults) {
       try {
-        std::cout << "Using 2\n";
+        // std::cout << "Using 2: " << algoPerf.algo << "\n";//<AliJahan>
         f(algoPerf);
-        std::cout << "Set algo in 2:" << algoPerf.algo << std::endl;
         cache.insert(args.params, algoPerf);
         return;
       } catch (c10::CUDAOutOfMemoryError &e) {
