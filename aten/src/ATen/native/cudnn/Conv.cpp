@@ -566,36 +566,72 @@ struct algorithm_search<cudnnConvolutionFwdAlgoPerf_t> {
                   "Missing cuDNN convolution forward algorithms");
     int perf_count;
     std::unique_ptr<perf_t[]> perf_results(new perf_t[num_algos]);
-    if (!benchmark) {
-      AT_CUDNN_CHECK_WITH_SHAPES(cudnnGetConvolutionForwardAlgorithm_v7(
-          args.handle,
-          args.idesc.desc(),
-          args.wdesc.desc(),
-          args.cdesc.desc(),
-          args.odesc.desc(),
-          num_algos,
-          &perf_count,
-          perf_results.get()), args);
-    } else {
-      size_t max_ws_size = getMaxWorkspaceSize(args, algos, num_algos);
-      Workspace ws(max_ws_size);
-      AT_CUDNN_CHECK_WITH_SHAPES(cudnnFindConvolutionForwardAlgorithmEx(
-          args.handle,
-          args.idesc.desc(), args.input.data_ptr(),
-          args.wdesc.desc(), args.weight.data_ptr(),
-          args.cdesc.desc(),
-          args.odesc.desc(), args.output.data_ptr(),
-          num_algos,
-          &perf_count,
-          perf_results.get(),
-          ws.data,
-          ws.size), args);
+    //<AliJahan>
+    if(conv_fwd_algo<0){//Stop benchmarking if the user specified an aglo
+      if (!benchmark) {
+        AT_CUDNN_CHECK_WITH_SHAPES(cudnnGetConvolutionForwardAlgorithm_v7(
+            args.handle,
+            args.idesc.desc(),
+            args.wdesc.desc(),
+            args.cdesc.desc(),
+            args.odesc.desc(),
+            num_algos,
+            &perf_count,
+            perf_results.get()), args);
+      } else {
+        size_t max_ws_size = getMaxWorkspaceSize(args, algos, num_algos);
+        Workspace ws(max_ws_size);
+        AT_CUDNN_CHECK_WITH_SHAPES(cudnnFindConvolutionForwardAlgorithmEx(
+            args.handle,
+            args.idesc.desc(), args.input.data_ptr(),
+            args.wdesc.desc(), args.weight.data_ptr(),
+            args.cdesc.desc(),
+            args.odesc.desc(), args.output.data_ptr(),
+            num_algos,
+            &perf_count,
+            perf_results.get(),
+            ws.data,
+            ws.size), args);
 
-      // Free the cached blocks in our caching allocator. They are
-      // needed here because the above benchmarking uses a huge amount of memory,
-      // e.g. a few GBs.
-      c10::cuda::CUDACachingAllocator::emptyCache();
+        // Free the cached blocks in our caching allocator. They are
+        // needed here because the above benchmarking uses a huge amount of memory,
+        // e.g. a few GBs.
+        c10::cuda::CUDACachingAllocator::emptyCache();
+      }
     }
+    else{
+      /*
+        for each algo and args pair:
+         - Estimate the memory size
+         - Set a dummy exec. time 
+         - Set it as deterministic
+         - Set status based on getWorkspaceSize
+        TODOs:
+          - MathType should be handled, it only supports one type now
+
+      */
+      perf_count = 0;
+      for (int i = 0; i < num_algos; i++) {
+        cudnnStatus_t err;
+        size_t sz;
+        err = at::native::getWorkspaceSize(args, algos[i], &sz);
+        if (CUDNN_STATUS_SUCCESS != err){ 
+          perf_results[algos[i]].memory = 0;  
+          perf_results[algos[i]].time = -1;
+          perf_results[algos[i]].status = (cudnnStatus_t) 9;
+        }else{
+          perf_results[algos[i]].memory = sz;
+          perf_results[algos[i]].time = 1.0;
+          perf_results[algos[i]].status = (cudnnStatus_t) 0;
+        }
+        perf_count++;
+        perf_results[algos[i]].algo = (cudnnConvolutionFwdAlgo_t) algos[i];
+        perf_results[algos[i]].determinism =  (cudnnDeterminism_t) 1; 
+        perf_results[algos[i]].mathType = (cudnnMathType_t) 0;
+      }
+    }
+    // for (int i = 0; i < num_algos; i++) 
+      // std::cout << i << ": " << perf_results[i].algo << ", " << perf_results[i].status << ", " << perf_results[i].time << ", " << perf_results[i].memory << ", " << perf_results[i].determinism << ", " << perf_results[i].mathType << "\n";
     // std::cout << "conv_fwd_algo: " << conv_fwd_algo << std::endl; //<AliJahan>
     return getValidAlgorithms<perf_t>(perf_results.get(), args, perf_count, conv_fwd_algo); //<AliJahan>
   }
